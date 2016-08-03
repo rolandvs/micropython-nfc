@@ -1,15 +1,17 @@
 """ NFC MFRC522x Reader
 
-    Author: Roland van Straten, @rlndvnstrtn 
-    Date: 02-08-2016
-    Version: 1.0
+    Author: Roland van Straten, @rlndvnstrtn
+    Date: 03-08-2016
+    Version: 1.1
 
     Original code from github.com/mxgxw and a little of me...
 
     Adapted for use with micropython / PYB10 board running mpy 1.8.2
 
-    The basic reading is working, need to test the other stuff, add the samples of mxgxw
-    Added the blue LED to show a tag is actually read.
+    The basic reading is working, need to test the other stuff and add the samples of mxgxw to __main__
+    - Added the blue LED to show a tag is actually read.
+    - Added read version of chip
+    - Added reading of Receiver gain setting
 
 
     MFRC522 Reader Wiring
@@ -22,9 +24,6 @@
     MISO         |   X7  | PA6  | SPI1
     MOSI         |   X8  | PA7  | SPI1
 
-    Modified __init__(), MFRC522_Init(), Write_MFRC522(), Read_MFRC522()
-    Added MFRC522_DeInit()
-    Added main()
 
     Able to read my collection of NFC cards and tags
     UID: 243,236, 67,146  NORTEC KEY TAG
@@ -40,7 +39,7 @@
           add a ctrl-break in the main function code
           add error checking
 
-"""    
+"""
 
 # can be better :-)
 from pyb import *
@@ -52,7 +51,7 @@ class MFRC522(object):
   MI_OK       = 0
   MI_NOTAGERR = 1
   MI_ERR      = 2
-    
+
   PCD_IDLE       = 0x00
   PCD_AUTHENT    = 0x0E
   PCD_RECEIVE    = 0x08
@@ -60,7 +59,7 @@ class MFRC522(object):
   PCD_TRANSCEIVE = 0x0C
   PCD_RESETPHASE = 0x0F
   PCD_CALCCRC    = 0x03
-  
+
   PICC_REQIDL    = 0x26
   PICC_REQALL    = 0x52
   PICC_ANTICOLL  = 0x93
@@ -74,7 +73,7 @@ class MFRC522(object):
   PICC_RESTORE   = 0xC2
   PICC_TRANSFER  = 0xB0
   PICC_HALT      = 0x50
-  
+
   Reserved00     = 0x00
   CommandReg     = 0x01
   CommIEnReg     = 0x02
@@ -91,7 +90,7 @@ class MFRC522(object):
   BitFramingReg  = 0x0D
   CollReg        = 0x0E
   Reserved01     = 0x0F
-  
+
   Reserved10     = 0x10
   ModeReg        = 0x11
   TxModeReg      = 0x12
@@ -108,8 +107,8 @@ class MFRC522(object):
   Reserved13     = 0x1D
   Reserved14     = 0x1E
   SerialSpeedReg = 0x1F
-  
-  Reserved20        = 0x20  
+
+  Reserved20        = 0x20
   CRCResultRegM     = 0x21
   CRCResultRegL     = 0x22
   Reserved21        = 0x23
@@ -125,7 +124,7 @@ class MFRC522(object):
   TReloadRegL       = 0x2D
   TCounterValueRegH = 0x2E
   TCounterValueRegL = 0x2F
-  
+
   Reserved30      = 0x30
   TestSel1Reg     = 0x31
   TestSel2Reg     = 0x32
@@ -150,8 +149,8 @@ class MFRC522(object):
 
 
   def __init__(self):
-    ''' init the interface '''  
-    
+    ''' init the interface '''
+
     self.nrstpd    = pyb.Pin(pyb.Pin.cpu.B10, pyb.Pin.OUT)  # sets the pin to output
     self.nenbrc522 = pyb.Pin(pyb.Pin.cpu.A4,  pyb.Pin.OUT)  # sets the pin to output
 
@@ -159,7 +158,7 @@ class MFRC522(object):
     self.nrstpd.low()     # put it in power down mode
 
     # reader has stable data on rising edge of signal (phase 0), clock is high active (polarity 0)
-    self.spi1 = SPI(1, SPI.MASTER, baudrate=1000000, polarity=0, phase=0, firstbit=SPI.MSB)  # default pins for SPI1 are selected
+    self.spi = SPI(1, SPI.MASTER, baudrate=1000000, polarity=0, phase=0, firstbit=SPI.MSB)  # default pins for SPI1 are selected
 
     # go configure yourself
     self.MFRC522_Init()
@@ -170,7 +169,7 @@ class MFRC522(object):
     data[0] = (addr<<1) & 0x7E
     data[1] = val
     self.nenbrc522.low()  # start the transaction
-    self.spi1.send(data)  # transfer two bytes to the chip
+    self.spi.send(data)  # transfer two bytes to the chip
     self.nenbrc522.high() # finished it
 
 
@@ -179,9 +178,9 @@ class MFRC522(object):
     buf = bytearray(2)  # could reuse data instead of using buf
     data[0] = ((addr<<1)&0x7E) | 0x80
     data[1] = 0x00
- 
+
     self.nenbrc522.low()            # start transaction
-    self.spi1.send_recv(data,buf)   # send data and read two bytes back
+    self.spi.send_recv(data,buf)   # send data and read two bytes back
     self.nenbrc522.high()           # transaction ended
 
     return buf[1]
@@ -189,27 +188,27 @@ class MFRC522(object):
 
   def MFRC522_Reset(self):
     self.Write_MFRC522(self.CommandReg, self.PCD_RESETPHASE)
-  
+
 
   def SetBitMask(self, reg, mask):
     tmp = self.Read_MFRC522(reg)
     self.Write_MFRC522(reg, tmp | mask)
-  
+
 
   def ClearBitMask(self, reg, mask):
     tmp = self.Read_MFRC522(reg);
     self.Write_MFRC522(reg, tmp & (~mask))
-  
+
 
   def AntennaOn(self):
     temp = self.Read_MFRC522(self.TxControlReg)
     if (~(temp & 0x03)):
       self.SetBitMask(self.TxControlReg, 0x03)
-  
+
 
   def AntennaOff(self):
     self.ClearBitMask(self.TxControlReg, 0x03)
-  
+
 
   def MFRC522_ToCard(self,command,sendData):
     backData = []
@@ -220,45 +219,45 @@ class MFRC522(object):
     lastBits = None
     n = 0
     i = 0
-    
+
     if command == self.PCD_AUTHENT:
       irqEn = 0x12
       waitIRq = 0x10
     if command == self.PCD_TRANSCEIVE:
       irqEn = 0x77
       waitIRq = 0x30
-    
+
     self.Write_MFRC522(self.CommIEnReg, irqEn|0x80)
     self.ClearBitMask(self.CommIrqReg, 0x80)
     self.SetBitMask(self.FIFOLevelReg, 0x80)
-    
-    self.Write_MFRC522(self.CommandReg, self.PCD_IDLE);  
-    
+
+    self.Write_MFRC522(self.CommandReg, self.PCD_IDLE);
+
     while(i<len(sendData)):
       self.Write_MFRC522(self.FIFODataReg, sendData[i])
       i = i+1
-    
+
     self.Write_MFRC522(self.CommandReg, command)
-      
+
     if command == self.PCD_TRANSCEIVE:
       self.SetBitMask(self.BitFramingReg, 0x80)
-    
+
     i = 2000
     while True:
       n = self.Read_MFRC522(self.CommIrqReg)
       i = i - 1
       if ~((i!=0) and ~(n&0x01) and ~(n&waitIRq)):
         break
-    
+
     self.ClearBitMask(self.BitFramingReg, 0x80)
-  
+
     if i != 0:
       if (self.Read_MFRC522(self.ErrorReg) & 0x1B)==0x00:
         status = self.MI_OK
 
         if n & irqEn & 0x01:
           status = self.MI_NOTAGERR
-      
+
         if command == self.PCD_TRANSCEIVE:
           n = self.Read_MFRC522(self.FIFOLevelReg)
           lastBits = self.Read_MFRC522(self.ControlReg) & 0x07
@@ -266,12 +265,12 @@ class MFRC522(object):
             backLen = (n-1)*8 + lastBits
           else:
             backLen = n*8
-          
+
           if n == 0:
             n = 1
           if n > self.MAX_LEN:
             n = self.MAX_LEN
-    
+
           i = 0
           while i<n:
             backData.append(self.Read_MFRC522(self.FIFODataReg))
@@ -280,37 +279,37 @@ class MFRC522(object):
         status = self.MI_ERR
 
     return (status,backData,backLen)
-  
-  
+
+
   def MFRC522_Request(self, reqMode):
     status = None
     backBits = None
     TagType = []
-    
+
     self.Write_MFRC522(self.BitFramingReg, 0x07)
-    
+
     TagType.append(reqMode);
     (status,backData,backBits) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, TagType)
-  
+
     if ((status != self.MI_OK) | (backBits != 0x10)):
       status = self.MI_ERR
-      
+
     return (status,backBits)
-  
-  
+
+
   def MFRC522_Anticoll(self):
     backData = []
     serNumCheck = 0
-    
+
     serNum = []
-  
+
     self.Write_MFRC522(self.BitFramingReg, 0x00)
-    
+
     serNum.append(self.PICC_ANTICOLL)
     serNum.append(0x20)
-    
+
     (status,backData,backBits) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE,serNum)
-    
+
     if (status == self.MI_OK):
       i = 0
       if len(backData)==5:
@@ -323,7 +322,7 @@ class MFRC522(object):
         status = self.MI_ERR
 
     return (status,backData)
-  
+
 
   def CalulateCRC(self, pIndata):
     self.ClearBitMask(self.DivIrqReg, 0x04)
@@ -343,7 +342,7 @@ class MFRC522(object):
     pOutData.append(self.Read_MFRC522(self.CRCResultRegL))
     pOutData.append(self.Read_MFRC522(self.CRCResultRegM))
     return pOutData
-  
+
 
   def MFRC522_SelectTag(self, serNum):
     backData = []
@@ -358,13 +357,13 @@ class MFRC522(object):
     buf.append(pOut[0])
     buf.append(pOut[1])
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buf)
-    
+
     if (status == self.MI_OK) and (backLen == 0x18):
       print ("Size: " + str(backData[0]))
       return    backData[0]
     else:
       return 0
-  
+
 
   def MFRC522_Auth(self, authMode, BlockAddr, Sectorkey, serNum):
     buff = []
@@ -398,7 +397,7 @@ class MFRC522(object):
 
     # Return the status
     return status
-  
+
 
   def MFRC522_StopCrypto1(self):
     self.ClearBitMask(self.Status2Reg, 0x08)
@@ -418,7 +417,7 @@ class MFRC522(object):
     if len(backData) == 16:
       print ("Sector "+str(blockAddr)+" "+str(backData))
 
-  
+
   def MFRC522_Write(self, blockAddr, writeData):
     buff = []
     buff.append(self.PICC_WRITE)
@@ -429,7 +428,7 @@ class MFRC522(object):
     (status, backData, backLen) = self.MFRC522_ToCard(self.PCD_TRANSCEIVE, buff)
     if not(status == self.MI_OK) or not(backLen == 4) or not((backData[0] & 0x0F) == 0x0A):
         status = self.MI_ERR
-    
+
     print (str(backLen)+" backdata &0x0F == 0x0A "+str(backData[0]&0x0F))
     if status == self.MI_OK:
         i = 0
@@ -446,7 +445,7 @@ class MFRC522(object):
         if status == self.MI_OK:
             print ("Data written")
 
-  
+
   def MFRC522_DumpClassic1K(self, key, uid):
     ''' dump the entire 1K of data '''
     i = 0
@@ -460,21 +459,53 @@ class MFRC522(object):
         i = i+1
 
 
+  def MFRC522_Version(self):
+    ''' return version of silicon
+        used reader returned 0x11 expected 0x91 (so we missed one bit?)
+    '''
+    val = self.Read_MFRC522(self.VersionReg) & 0x0F
+    return val
+
+
+  def MFRC522_ReceiverGain(self):
+    ''' the receiver gain is variable from 18 to 48dB '''
+    #self.Write_MFRC522(self.RFCfgReg, 0x4<<4)
+
+    val = (self.Read_MFRC522(self.RFCfgReg) & 0x7F) >> 4
+
+    if (val==0) or (val==2):
+      val = 18
+    elif (val==1) or (val==3):
+      val = 23
+    elif val==4:
+      val = 33
+    elif val==5: 
+      val=38
+    elif val==6:
+      val=43
+    else: 
+      val=48
+    return val
+
+
   def MFRC522_Init(self):
     ''' init the device registers '''
-    self.nenbrc522.low() # assert device  
+    self.nenbrc522.low() # assert device
     self.nrstpd.high()   # get it out of reset
 
     pyb.delay(500)
     self.MFRC522_Reset();
-    
+
     pyb.delay(500)
+
+    print("MFRC522 version is " + str(self.MFRC522_Version() ) )
+    print("Receiver gain is " + str(self.MFRC522_ReceiverGain()) + "dB")
 
     self.Write_MFRC522(self.TModeReg, 0x8D)
     self.Write_MFRC522(self.TPrescalerReg, 0x3E)
     self.Write_MFRC522(self.TReloadRegL, 30)
     self.Write_MFRC522(self.TReloadRegH, 0)
-    
+
     self.Write_MFRC522(self.TxAutoReg, 0x40)
     self.Write_MFRC522(self.ModeReg, 0x3D)
     self.AntennaOn()
@@ -483,7 +514,7 @@ class MFRC522(object):
   def MFRC522_DeInit(self):
     ''' turn it off and sleep '''
     self.AntennaOff()
-    self.nenbrc522.high()  
+    self.nenbrc522.high()
     self.nrstpd.low()
 
 
@@ -498,24 +529,24 @@ if __name__ == '__main__':
 
   # loop keeps checking for cards and tags. If one is near it will catch the UID and authenticate it
   while hell_freezes_over:
-    
-    # Scan for cards    
+
+    # Scan for cards
     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
     # If a card is found
     if status == MIFAREReader.MI_OK:
         print ("NFC card detected")
-    
+
     # Get the UID of the card
     (status,uid) = MIFAREReader.MFRC522_Anticoll()
 
     # If we have the UID, continue
     if status == MIFAREReader.MI_OK:
-        pyb.LED(4).on() 
+        pyb.LED(4).on()
         pyb.delay(200)
-        pyb.LED(4).off() 
+        pyb.LED(4).off()
         # Print UID
         print("Card read UID: "+str(hex(uid[0]))+","+str(hex(uid[1]))+","+str(hex(uid[2]))+","+str(hex(uid[3])) )
-    
+
         # This is the default key for authentication
         key = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]
         # Select the scanned tag
