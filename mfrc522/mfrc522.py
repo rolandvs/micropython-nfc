@@ -2,19 +2,19 @@
 
     Author: Roland van Straten, @rlndvnstrtn
     Date: 03-08-2016
-    Version: 1.1
+    Version: 1.2
 
     Original code from github.com/mxgxw and a little of me...
 
     Adapted for use with micropython / PYB10 board running mpy 1.8.2
+    Adapted for use with micropython / ESP8266
 
     The basic reading is working, need to test the other stuff and add the samples of mxgxw to __main__
     - Added the blue LED to show a tag is actually read.
     - Added read version of chip
     - Added reading of Receiver gain setting
 
-
-    MFRC522 Reader Wiring
+    PYB 1.0 BOARD MFRC522 Reader Wiring
 
     SIGNAL       | PYB10 | CPU  | INFO
     ============ | ===== | ==== | =======
@@ -24,6 +24,15 @@
     MISO         |   X7  | PA6  | SPI1
     MOSI         |   X8  | PA7  | SPI1
 
+    ESP-13 MODULE MFRC522 Reader Wiring
+
+    SIGNAL       | ESP13 | INFO
+    ============ | ===== | =======
+    NRSTPD       | IO2   | GPIO
+    SDA / NSS    | IO0   | GPIO
+    SCK          | IO14  | SPI
+    MISO         | IO12  | SPI
+    MOSI         | IO13  | SPI
 
     Able to read my collection of NFC cards and tags
     UID: 243,236, 67,146  NORTEC KEY TAG
@@ -39,10 +48,22 @@
           add a ctrl-break in the main function code
           add error checking
 
+    REMARKS: tried uploading it to the ESP-13, however it has to little memory
+             stripped, resized, etc. but still not loading correctly
+
+
+
 """
 
-# can be better :-)
-from pyb import *
+MPY_ESP8266 = True
+
+if not MPY_ESP8266:
+  # can be better :-)
+  from pyb import *
+else:
+  from machine import Pin, SPI
+  import time
+
 
 
 class MFRC522(object):
@@ -151,14 +172,27 @@ class MFRC522(object):
   def __init__(self):
     ''' init the interface '''
 
-    self.nrstpd    = pyb.Pin(pyb.Pin.cpu.B10, pyb.Pin.OUT)  # sets the pin to output
-    self.nenbrc522 = pyb.Pin(pyb.Pin.cpu.A4,  pyb.Pin.OUT)  # sets the pin to output
+    if not MPY_ESP8266:
+      # PYB specific use
+      self.nrstpd    = pyb.Pin(pyb.Pin.cpu.B10, pyb.Pin.OUT)  # sets the pin to output
+      self.nenbrc522 = pyb.Pin(pyb.Pin.cpu.A4,  pyb.Pin.OUT)  # sets the pin to output
 
-    self.nenbrc522.high() # deselect device
-    self.nrstpd.low()     # put it in power down mode
+      self.nenbrc522.high() # deselect device
+      self.nrstpd.low()     # put it in power down mode
 
-    # reader has stable data on rising edge of signal (phase 0), clock is high active (polarity 0)
-    self.spi = SPI(1, SPI.MASTER, baudrate=1000000, polarity=0, phase=0, firstbit=SPI.MSB)  # default pins for SPI1 are selected
+      # reader has stable data on rising edge of signal (phase 0), clock is high active (polarity 0)
+      self.spi = SPI(1, SPI.MASTER, baudrate=1000000, polarity=0, phase=0, firstbit=SPI.MSB)  # default pins for SPI1 are selected
+    else:
+      # ESP8266 specific use
+      self.nrstpd    = machine.Pin(0, machine.Pin.OUT)  # sets the pin to output
+      self.nenbrc522 = machine.Pin(2, machine.Pin.OUT)  # sets the pin to output
+
+      self.nenbrc522.high() # deselect device
+      self.nrstpd.low()     # put it in power down mode
+
+      # reader has stable data on rising edge of signal (phase 0), clock is high active (polarity 0)
+      self.spi = SPI(SPI.MASTER, baudrate=1000000, polarity=0, phase=0, firstbit=SPI.MSB)  # default pins for SPI are selected
+
 
     # go configure yourself
     self.MFRC522_Init()
@@ -169,7 +203,12 @@ class MFRC522(object):
     data[0] = (addr<<1) & 0x7E
     data[1] = val
     self.nenbrc522.low()  # start the transaction
-    self.spi.send(data)  # transfer two bytes to the chip
+    
+    if not MPY_ESP8266:
+      self.spi.send(data)  # transfer two bytes to the chip
+    else:
+      self.spi.write(data)  # transfer buffer
+
     self.nenbrc522.high() # finished it
 
 
@@ -180,7 +219,12 @@ class MFRC522(object):
     data[1] = 0x00
 
     self.nenbrc522.low()            # start transaction
-    self.spi.send_recv(data,buf)   # send data and read two bytes back
+
+    if not MPY_ESP8266:
+      self.spi.send_recv(data,buf)   # send data and read two bytes back
+    else:
+      self.spi.write_readinto(data,buf) # send data and read two bytes back
+
     self.nenbrc522.high()           # transaction ended
 
     return buf[1]
@@ -490,13 +534,14 @@ class MFRC522(object):
 
   def MFRC522_Init(self):
     ''' init the device registers '''
-    self.nenbrc522.low() # assert device
     self.nrstpd.high()   # get it out of reset
 
-    pyb.delay(500)
     self.MFRC522_Reset();
 
-    pyb.delay(500)
+    if not MPY_ESP8266:
+      pyb.delay(500)
+    else:
+      time.sleep_ms(500)
 
     print("MFRC522 version is " + str(self.MFRC522_Version() ) )
     print("Receiver gain is " + str(self.MFRC522_ReceiverGain()) + "dB")
@@ -515,12 +560,18 @@ class MFRC522(object):
     ''' turn it off and sleep '''
     self.AntennaOff()
     self.nenbrc522.high()
-    self.nrstpd.low()
+    self.nrstpd.low() #  put the chip into power down
+    self.spi.deinit() # turn off SPI bus
 
 
 
 if __name__ == '__main__':
   """ some basic test code resides here """
+
+  if not MPY_ESP8266:
+    print("PYB1.0 Board configuration")
+  else
+    print("ESP-13 Module configuration")
 
   hell_freezes_over = True
 
@@ -556,6 +607,10 @@ if __name__ == '__main__':
         # Stop
         #MIFAREReader.MFRC522_StopCrypto1()
 
-    pyb.delay(1000)
+
+    if not MPY_ESP8266:
+      pyb.delay(1000)
+    else:
+      time.sleep_ms(1000)
 
   # handle ctrl-c
