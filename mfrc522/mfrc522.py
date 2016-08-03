@@ -592,20 +592,22 @@ if __name__ == '__main__':
 
     # If we have the UID, continue
     if status == MIFAREReader.MI_OK:
+      if not MPY_ESP8266:
         pyb.LED(4).on()
         pyb.delay(200)
         pyb.LED(4).off()
-        # Print UID
-        print("Card read UID: "+str(hex(uid[0]))+","+str(hex(uid[1]))+","+str(hex(uid[2]))+","+str(hex(uid[3])) )
 
-        # This is the default key for authentication
-        key = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]
-        # Select the scanned tag
-        #MIFAREReader.MFRC522_SelectTag(uid)
-        # Dump the data
-        #MIFAREReader.MFRC522_DumpClassic1K(key, uid)
-        # Stop
-        #MIFAREReader.MFRC522_StopCrypto1()
+      # Print UID
+      print("Card read UID: "+str(hex(uid[0]))+","+str(hex(uid[1]))+","+str(hex(uid[2]))+","+str(hex(uid[3])) )
+
+      # This is the default key for authentication
+      key = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]
+      # Select the scanned tag
+      #MIFAREReader.MFRC522_SelectTag(uid)
+      # Dump the data
+      #MIFAREReader.MFRC522_DumpClassic1K(key, uid)
+      # Stop
+      #MIFAREReader.MFRC522_StopCrypto1()
 
 
     if not MPY_ESP8266:
