@@ -570,7 +570,7 @@ if __name__ == '__main__':
 
   if not MPY_ESP8266:
     print("PYB1.0 Board configuration")
-  else
+  else:
     print("ESP-13 Module configuration")
 
   hell_freezes_over = True
