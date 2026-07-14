@@ -16,5 +16,5 @@ The reader supports:
 - MIFARE Plus RF identification protocols.
 
 # mfrc522.py
-The code uses the `PYB` module (need to change to `machine`). Using `execfile('mfrc522.py')` to start the reading, `import MFRC522` to add the module to your program.
+Change MPY_BOARD value to choose desired board.  The code uses the `PYB` module (need to change to `machine`) for PYB10 board. ESP8266 and ESP32 use `machine`. Using `execfile('mfrc522.py')` to start the reading, `import MFRC522` to add the module to your program.
 
